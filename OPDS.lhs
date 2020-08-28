@@ -2,7 +2,7 @@ OPDS Acquisition Selection 1.0
 ===
 
 This specification describes how the [Library Simplified](https://www.librarysimplified.org)
-applications select [OPDS](https://specs.opds.io/opds-1.2) for display and
+applications select [OPDS](https://specs.opds.io/opds-1.2) _acquisitions_ for display and
 for acquiring books. The specification is described as executable [Literate Haskell](https://www.haskell.org)
 and can be executed and inspected directly using [ghci](https://www.haskell.org/ghc/).
 

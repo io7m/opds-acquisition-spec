@@ -228,22 +228,6 @@ mimeOPDS :: MIMEType
 mimeOPDS = MIMEType "application/atom+xml;relation=entry;profile=opds-catalog"
 mimeHTML :: MIMEType
 mimeHTML = MIMEType "text/html"
-mimeA :: MIMEType
-mimeA = MIMEType "text/A"
-mimeB :: MIMEType
-mimeB = MIMEType "text/B"
-mimeBA :: MIMEType
-mimeBA = MIMEType "text/BA"
-mimeC :: MIMEType
-mimeC = MIMEType "text/C"
-mimeCA :: MIMEType
-mimeCA = MIMEType "text/CA"
-mimeCB :: MIMEType
-mimeCB = MIMEType "text/CB"
-mimeD :: MIMEType
-mimeD = MIMEType "text/D"
-mimeDA :: MIMEType
-mimeDA = MIMEType "text/DA"
 ```
 
 A trivial example that shows a single open access EPUB accessible directly

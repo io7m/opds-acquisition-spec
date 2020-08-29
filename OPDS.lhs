@@ -62,7 +62,7 @@ Acquisitions
 
 An OPDS _acquisition_ is an XML `link` element with zero or more _indirect acquisition_
 elements. An _acquisition_ *MUST* specify a starting URI and MIME type, and each
-_indirect acquisition_ *MUST* specify MIME type. An acquisition `a` holding
+_indirect acquisition_ *MUST* specify a MIME type. An acquisition `a` holding
 a URI `u` of MIME type `t` indicates that a client application may fetch an
 object of type `t` by making a request at `u`. _Indirect acquisitions_ form
 a directed acyclic graph with an _acquisition_ at the root.

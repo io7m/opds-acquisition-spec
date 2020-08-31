@@ -1,10 +1,30 @@
 OPDS Acquisition Selection 1.0
 ===
 
+Overview
+---
+
 This specification describes how the [Library Simplified](https://www.librarysimplified.org)
 applications select [OPDS](https://specs.opds.io/opds-1.2) _acquisitions_ for display and
 for acquiring books. The specification is described as executable [Literate Haskell](https://www.haskell.org)
 and can be executed and inspected directly using [ghci](https://www.haskell.org/ghc/).
+It attempts to answer two main questions:
+
+  1. Given an OPDS feed entry consisting of one or more acquisitions, should
+     the feed entry be _displayed_ by a consuming application? That is, does
+     the feed entry contain at least one _acquisition_ that the application
+     can support?
+
+  2. Given an OPDS feed entry consisting of one or more acquisitions, if
+     a consuming application could only choose one _acquisition_, which one
+     should it choose?
+
+This specification attempts to provide unambiguous answers to the two questions
+in order to ensure consistent behaviour across the various Library Simplified
+applications.
+
+Typographic Conventions
+---
 
 Within this document, commands given at the GHCI prompt are prefixed
 with `*OPDS>` to indicate that the commands are being executed within
@@ -54,7 +74,7 @@ data Relation
   | OpenAccess
   | Sample
   | Subscribe
-  deriving (Eq, Show)
+  deriving (Eq, Ord, Show)
 ```
 
 Acquisitions
@@ -81,6 +101,12 @@ data IndirectAcquisition
 data Acquisition
   = Acquisition Relation URI MIMEType [IndirectAcquisition]
   deriving (Eq, Show)
+
+acquisitionRelation :: Acquisition -> Relation
+acquisitionRelation (Acquisition r _ _ _) = r
+
+acquisitionMime :: Acquisition -> MIMEType
+acquisitionMime (Acquisition _ _ m _) = m
 ```
 
 An _acquisition path_ is a list of acquisitions (indirect or otherwise) through
@@ -93,6 +119,9 @@ EPUB file.
 data AcquisitionPathElement
   = AcquisitionPathElement MIMEType (Maybe URI)
   deriving (Eq, Show)
+
+acquisitionPathMime :: AcquisitionPathElement -> MIMEType
+acquisitionPathMime (AcquisitionPathElement m _) = m
 
 data AcquisitionPath
   = AcquisitionPath [AcquisitionPathElement]
@@ -111,7 +140,7 @@ prefixPathWith :: MIMEType -> (Maybe URI) -> AcquisitionPath -> AcquisitionPath
 prefixPathWith mime uri = prefixPathWithElement (AcquisitionPathElement mime uri)
 
 mimeTypesOf :: AcquisitionPath -> [MIMEType]
-mimeTypesOf (AcquisitionPath e) = map (\(AcquisitionPathElement mime _) -> mime) e
+mimeTypesOf (AcquisitionPath e) = map acquisitionPathMime e
 ```
 
 An OPDS _acquisition feed entry_ contains zero or more _acquisitions_ along
@@ -124,6 +153,9 @@ specification.
 data FeedEntry
   = FeedEntry String [Acquisition]
   deriving (Eq, Show)
+
+feedEntryAcquisitions :: FeedEntry -> [Acquisition]
+feedEntryAcquisitions (FeedEntry _ a) = a
 ```
 
 Example Acquisitions
@@ -150,10 +182,26 @@ encrypted EPUB file:
 </link>
 ```
 
+Acquisition Relation Filtering
+---
+
+Not all applications support all of the available OPDS link relation types.
+Applications *SHOULD* filter out acquisitions contain links relations not
+supported by the application in question whilst preserving the order of
+acquisitions as declared in the OPDS feed entry.
+
+```haskell
+isSupportedRelation :: DS.Set Relation -> Acquisition -> Bool
+isSupportedRelation r a = DS.member (acquisitionRelation a) r
+
+filterBySupportedRelations :: DS.Set Relation -> [Acquisition] -> [Acquisition]
+filterBySupportedRelations relations = filter (isSupportedRelation relations)
+```
+
 Linearized Acquisitions
 ---
 
-Applications should _linearize_ the tree of acquisitions, preserving the
+Applications SHOULD _linearize_ the tree of acquisitions, preserving the
 order of acquisitions as declared in the originating OPDS feed. This is
 achieved by performing a depth-first traversal over the tree of acquisitions,
 maintaining a stack of the elements that lead to the current acquisition,
@@ -310,25 +358,28 @@ acquisition path `P` if the application supports each and every MIME type
 given by `mimeTypesOf P`.
 
 ```haskell
-supportsEach :: DS.Set MIMEType -> AcquisitionPath -> Bool
-supportsEach supported path = all (\t -> DS.member t supported) (mimeTypesOf path)
+pathSupportedByType :: DS.Set MIMEType -> AcquisitionPath -> Bool
+pathSupportedByType supported path = all (\t -> DS.member t supported) (mimeTypesOf path)
 ```
 
-Applications _MUST_ filter unsupported acquisition paths whilst preserving
+Applications *MUST* filter unsupported acquisition paths whilst preserving
 the declaration order of those paths as they appeared in the original OPDS
 feed entry. Applications _MAY_ provide extra filtering of acquisition paths
 beyond that specified here as long as the declaration order of paths remains
 preserved.
 
 ```haskell
-supportedPaths :: DS.Set MIMEType -> FeedEntry -> [AcquisitionPath]
-supportedPaths supported entry = filter (supportsEach supported) (acquisitionPathsFeedEntry entry)
+pathsSupportedByType :: DS.Set MIMEType -> [AcquisitionPath] -> [AcquisitionPath]
+pathsSupportedByType supported = filter (pathSupportedByType supported)
+
+entryPathsSupportedByType :: DS.Set MIMEType -> FeedEntry -> [AcquisitionPath]
+entryPathsSupportedByType supported entry = pathsSupportedByType supported (acquisitionPathsFeedEntry entry)
 ```
 
 The preservation of the declaration order of acquisition paths in feeds
 allows for OPDS servers to effectively set the preferred acquisitions for
 clients; acquisitions that the server hopes clients will use the most should
-be declared first in the feed. Applications _SHOULD_ use the first element of
+be declared first in the feed. Applications *SHOULD* use the first element of
 the list of filtered acquisition paths as the default choice for obtaining an
 object from an OPDS feed.
 
@@ -338,7 +389,7 @@ Acquisition Path Filtering Example
 An application with no supported MIME types reports no acquisition paths:
 
 ```
-*OPDS> supportedPaths DS.empty exampleFeedMulti0
+*OPDS> entryPathsSupportedByType DS.empty exampleFeedMulti0
 []
 ```
 
@@ -346,6 +397,108 @@ An application that does not support Adobe ACSM files reports only one
 acquisition path:
 
 ```
-*OPDS> map showPretty $ supportedPaths (DS.fromList [mimeOPDS, mimePDF, mimeEPUB, mimePlain, mimeHTML]) exampleFeedMulti0
+*OPDS> map showPretty $ entryPathsSupportedByType (DS.fromList [mimeOPDS, mimePDF, mimeEPUB, mimePlain, mimeHTML]) exampleFeedMulti0
 ["(text/html,https://example.com/Open-Access)"]
+```
+
+Application Support
+---
+
+An _application_, in this specification, consists of a set of supported
+OPDS link relations, a set of supported MIME types, and a function that may
+provide extended filtering of acquisition paths.
+
+```haskell
+data Application
+  = Application (DS.Set Relation) (DS.Set MIMEType) (AcquisitionPath -> Bool)
+
+appSupportedRelations :: Application -> DS.Set Relation
+appSupportedRelations (Application r _ _) = r
+
+appSupportedMIMETypes :: Application -> DS.Set MIMEType
+appSupportedMIMETypes (Application _ m _) = m
+
+appPathFilter :: Application -> (AcquisitionPath -> Bool)
+appPathFilter (Application _ _ f) = f
+```
+
+Combining all of the rules so far yields functions that, given an _application_
+and an OPDS feed entry, can determine if an OPDS feed entry should be _displayed_,
+and which single OPDS acquisition should be used by default (if any).
+
+```haskell
+appEntrySupportedPaths :: Application -> FeedEntry -> [AcquisitionPath]
+appEntrySupportedPaths app entry =
+  let
+    supportedByRelation = filterBySupportedRelations (appSupportedRelations app) (feedEntryAcquisitions entry)
+    supportedLinear     = acquisitionPathsAll supportedByRelation
+    supportedByType     = pathsSupportedByType (appSupportedMIMETypes app) supportedLinear
+  in
+    filter (appPathFilter app) supportedByType
+
+appShouldDisplay :: Application -> FeedEntry -> Bool
+appShouldDisplay app entry = length (appEntrySupportedPaths app entry) > 0
+
+appPreferredAcquisitionPath :: Application -> FeedEntry -> Maybe AcquisitionPath
+appPreferredAcquisitionPath app entry =
+  let available = appEntrySupportedPaths app entry in
+    if length available > 0
+    then Just $ head available
+    else Nothing
+```
+
+Example Application Support
+---
+
+The Library Simplified Vanilla Android application supports EPUB files, PDF
+files, and various audio book formats, but does not support Adobe DRM. It
+supports a limited set of OPDS link relations. Audio book formats are omitted
+here for brevity.
+
+```haskell
+exampleAppRelations :: DS.Set Relation
+exampleAppRelations = DS.fromList [Borrow, Generic, OpenAccess]
+
+exampleAppVanillaTypes :: DS.Set MIMEType
+exampleAppVanillaTypes = DS.fromList [mimePDF, mimeEPUB, mimeOPDS]
+
+exampleAppVanilla :: Application
+exampleAppVanilla =
+  Application exampleAppRelations exampleAppVanillaTypes (const True)
+```
+
+The NYPL's SimplyE Android application supports EPUB files, PDF
+files, and various audio book formats, and support Adobe DRM (but not for PDF
+files). Audio book formats are omitted here for brevity.
+
+```haskell
+exampleNoAdobePDF :: AcquisitionPath -> Bool
+exampleNoAdobePDF path =
+ let types = DS.fromList $ mimeTypesOf path in
+   if DS.member mimePDF types
+   then not $ DS.member mimeACSM types
+   else True
+
+exampleAppSimplyETypes :: DS.Set MIMEType
+exampleAppSimplyETypes = DS.fromList [mimePDF, mimeEPUB, mimeOPDS, mimeACSM]
+
+exampleAppSimplyE :: Application
+exampleAppSimplyE =
+  Application exampleAppRelations exampleAppSimplyETypes exampleNoAdobePDF
+```
+
+The Vanilla application, lacking DRM support, does not support the OPDS
+feed entry from earlier, whilst the SimplyE application does. The SimplyE
+application selects the non-PDF acquisition by default, as it does not support
+encrypted PDF files.
+
+```
+*OPDS> appShouldDisplay exampleAppVanilla exampleFeedMulti0
+False
+
+*OPDS> appShouldDisplay exampleAppSimplyE exampleFeedMulti0
+True
+
+*OPDS> fmap showPretty $ appPreferredAcquisitionPath exampleAppSimplyE exampleFeedMulti0
+Just "(application/atom+xml;relation=entry;profile=opds-catalog,https://example.com/Borrow) -> application/vnd.adobe.adept+xml -> application/epub+zip"
 ```

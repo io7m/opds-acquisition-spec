@@ -468,7 +468,7 @@ exampleAppVanilla =
 ```
 
 The NYPL's SimplyE Android application supports EPUB files, PDF
-files, and various audio book formats, and support Adobe DRM (but not for PDF
+files, and various audio book formats, and supports Adobe DRM (but not for PDF
 files). Audio book formats are omitted here for brevity.
 
 ```haskell

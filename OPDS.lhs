@@ -30,7 +30,7 @@ Within this document, commands given at the GHCI prompt are prefixed
 with `*OPDS>` to indicate that the commands are being executed within
 the `OPDS` module.
 
-The main specification definitions are given the [OPDS](OPDS.lhs) module:
+The main specification definitions are given in the [OPDS](OPDS.lhs) module:
 
 ```haskell
 {-# LANGUAGE Haskell2010, ExplicitForAll #-}
